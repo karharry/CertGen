@@ -1,0 +1,4 @@
+cryptography>=43
+flask>=3
+waitress>=3
+pywebview>=5

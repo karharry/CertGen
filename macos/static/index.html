@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CertGen</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--fg:#1c2024;--mut:#667;--ac:#2563eb;--bd:#d8dce2}
+@media(prefers-color-scheme:dark){:root{--bg:#14161a;--card:#1d2026;--fg:#e6e8eb;--mut:#9aa;--ac:#5b8def;--bd:#333943}}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px system-ui,sans-serif}
+header{display:flex;gap:12px;align-items:center;padding:10px 16px;background:var(--card);border-bottom:1px solid var(--bd);flex-wrap:wrap}
+header b{margin-right:auto}
+nav button{background:none;border:0;color:var(--fg);padding:6px 10px;cursor:pointer;border-radius:6px}
+nav button.on{background:var(--ac);color:#fff}
+main{max-width:860px;margin:16px auto;padding:0 16px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:16px;margin-bottom:16px}
+label{display:block;margin:10px 0 4px;color:var(--mut);font-size:13px}
+input,select,button.b{font:inherit;padding:7px 9px;border:1px solid var(--bd);border-radius:6px;background:var(--bg);color:var(--fg);box-sizing:border-box}
+input,select{width:100%}
+button.b{background:var(--ac);color:#fff;border-color:var(--ac);cursor:pointer;margin-top:12px;width:auto}
+button.s{background:var(--bg);color:var(--fg);border-color:var(--bd)}
+button.d{background:#c0392b;border-color:#c0392b}
+.row{display:flex;gap:8px;align-items:center}.row input{flex:1}.row button{margin:0!important}
+table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:6px;border-bottom:1px solid var(--bd);font-size:13px;vertical-align:top;word-break:break-all}
+#msg{padding:10px 16px;margin:0 0 12px;border-radius:8px;display:none}
+#msg.ok{display:block;background:#1e7e4a;color:#fff}#msg.err{display:block;background:#c0392b;color:#fff}
+#browse{border:1px solid var(--bd);border-radius:6px;margin-top:6px;max-height:200px;overflow:auto}
+#browse div{padding:5px 9px;cursor:pointer}#browse div:hover{background:var(--bd)}
+.hide{display:none!important}
+</style></head><body>
+<div id="app">
+<header><b>CertGen</b><nav id="nav"></nav></header>
+<main><div id="msg"></div>
+<section id="t-gen" class="card"><h3>New certificate</h3>
+ <label>Certificate name (optional, used for file names; defaults to the first address)</label><input id="cname" placeholder="homelab">
+ <label>Addresses: hostnames, IPs or *.wildcards, one per line or comma-separated</label>
+ <textarea id="addr" rows="4" placeholder="service1.home&#10;service2.home&#10;192.168.1.10" style="width:100%;box-sizing:border-box;font:inherit;padding:7px 9px;border:1px solid var(--bd);border-radius:6px;background:var(--bg);color:var(--fg)"></textarea>
+ <label>Valid for (days)</label><input id="days" type="number" value="365" min="1" max="36500">
+ <label>Format</label><select id="fmt"></select>
+ <div id="pwbox" class="hide"><label>Export password for p12/pfx (optional)</label><input id="pw" type="password" autocomplete="new-password"></div>
+ <label>Save to folder</label><div class="row"><input id="folder"><button class="b s" onclick="browse('folder')">Browse</button></div>
+ <div id="browse" class="hide"></div>
+ <button class="b" onclick="create()">Create certificate</button></section>
+<section id="t-certs" class="hide card"><h3>Certificates made here</h3><div id="certs"></div></section>
+<section id="t-hist" class="hide card"><h3>History</h3><div id="hist"></div></section>
+<section id="t-term" class="hide card"><h3>Terminal (zsh)</h3>
+ <label>Commands (one per line = batch). Runs in the working folder, no interactive input.</label>
+ <textarea id="cmd" rows="8" spellcheck="false" style="width:100%;box-sizing:border-box;font:13px ui-monospace,Consolas,monospace;padding:8px;border:1px solid var(--bd);border-radius:6px;background:var(--bg);color:var(--fg)"></textarea>
+ <div class="row" style="margin-top:8px"><label style="margin:0">Timeout (s)</label><input id="tmo" type="number" value="60" min="1" max="600" style="flex:0 0 90px"><button class="b" id="runb" onclick="runCmd()">Run</button></div>
+ <pre id="termout" style="white-space:pre-wrap;word-break:break-all;background:var(--bg);border:1px solid var(--bd);border-radius:6px;padding:10px;min-height:60px;max-height:420px;overflow:auto;font:13px ui-monospace,Consolas,monospace"></pre></section>
+</main></div>
+<script>
+const $=id=>document.getElementById(id);let ME,renewing=null;
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function say(t,ok=true){const m=$('msg');m.className=ok?'ok':'err';m.innerHTML=t;scroll(0,0)}
+async function api(m,u,b){const r=await fetch(u,{method:m,headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined});
+ const j=await r.json().catch(()=>({}));if(!r.ok){say(esc(j.error||r.statusText),false);throw 0}return j}
+async function init(){
+ ME=await api('GET','/api/me');
+ $('fmt').innerHTML=ME.formats.map(f=>`<option>${f}</option>`).join('');$('fmt').onchange=()=>$('pwbox').classList.toggle('hide',!/^(p12|pfx)$/.test($('fmt').value));
+ $('folder').value=ME.folder;
+ const tabs=[['gen','New'],['certs','Certificates'],['hist','History'],['term','Terminal (zsh)']];
+ $('nav').innerHTML=tabs.map(t=>`<button id="n-${t[0]}" onclick="tab('${t[0]}')">${t[1]}</button>`).join('');tab('gen')}
+function tab(t){for(const x of ['gen','certs','hist','term']){$('t-'+x).classList.toggle('hide',x!=t);$('n-'+x)?.classList.toggle('on',x==t)}
+ $('msg').className='';if(t=='certs')loadCerts();if(t=='hist')loadHist()}
+async function browse(id,path){const j=await api('GET','/api/ls?path='+encodeURIComponent(path??$(id).value));$(id).value=j.path;
+ const b=$('browse');b.classList.remove('hide');
+ b.innerHTML=`<div data-p="${esc(j.parent)}">⬆ ..</div>`+j.dirs.map(d=>`<div data-p="${esc(j.path+(j.path.endsWith('/')||j.path.endsWith('\\')?'':(j.path.includes('\\')?'\\':'/'))+d)}">📁 ${esc(d)}</div>`).join('')+`<div class="s" data-done="1" style="color:var(--ac)">✔ Use this folder</div>`;
+ b.onclick=e=>{const d=e.target.closest('div');if(!d)return;d.dataset.done?b.classList.add('hide'):browse(id,d.dataset.p)}}
+async function create(){const body={name:$('cname').value,addresses:$('addr').value,days:$('days').value,fmt:$('fmt').value,folder:$('folder').value,password:$('pw').value};
+ const j=await api('POST','/api/certs',body);say('Created:<br>'+j.files.map(esc).join('<br>'))}
+async function loadCerts(){const c=await api('GET','/api/certs');
+ $('certs').innerHTML=c.length?'<table><tr><th>Address<th>Expires<th>Format<th>Files<th></tr>'+c.map(x=>`<tr><td><b>${esc(x.name||x.address)}</b><br>${esc(x.address.split(',').join(', '))}<br><small>renewed ${x.renewed}×</small><td>${esc(x.not_after.slice(0,10))}<td>${esc(x.fmt)}<td>${x.files.map(esc).join('<br>')}<td><button class="b s" onclick='renewForm(${JSON.stringify(x).replace(/'/g,"&#39;")})'>Renew</button></tr>`).join('')+'</table><div id="rf"></div>':'None yet.'}
+function renewForm(x){renewing=x;$('rf').innerHTML=`<h4>Renew ${esc(x.name||x.address)}</h4>
+ <label>Addresses</label><textarea id="raddr" rows="3" style="width:100%;box-sizing:border-box;font:inherit;padding:7px 9px;border:1px solid var(--bd);border-radius:6px;background:var(--bg);color:var(--fg)">${esc(x.address.split(',').join('\n'))}</textarea>
+ <label>Valid for (days)</label><input id="rd" type="number" value="${x.days}"><label>Format</label><select id="rfmt">${ME.formats.map(f=>`<option ${f==x.fmt?'selected':''}>${f}</option>`).join('')}</select>
+ <label>Export password (p12/pfx, optional)</label><input id="rpw" type="password" autocomplete="new-password">
+ <label>Folder</label><div class="row"><input id="rfolder" value="${esc(x.folder)}"><button class="b s" onclick="browse('rfolder')">Browse</button></div>
+ <button class="b" onclick="renew()">Renew</button>`;$('rf').append($('browse'))}
+async function renew(){const j=await api('POST',`/api/certs/${renewing.id}/renew`,{addresses:$('raddr').value,days:$('rd').value,fmt:$('rfmt').value,folder:$('rfolder').value,password:$('rpw').value});
+ say('Renewed:<br>'+j.files.map(esc).join('<br>'));loadCerts()}
+async function loadHist(){const h=await api('GET','/api/history');
+ $('hist').innerHTML='<table><tr><th>Time (UTC)<th>Action<th>Detail</tr>'+h.map(x=>`<tr><td>${esc(x.ts.replace('T',' ').slice(0,19))}<td>${esc(x.action)}<td>${esc(x.detail)}</tr>`).join('')+'</table>'}
+async function runCmd(){const b=$('runb');b.disabled=true;$('termout').textContent='Running…';
+ try{const j=await api('POST','/api/run',{script:$('cmd').value,timeout:$('tmo').value});$('termout').textContent=j.output+'\n[exit '+(j.exit??'timeout')+']'}catch(e){$('termout').textContent=''}b.disabled=false}
+init();
+</script></body></html>

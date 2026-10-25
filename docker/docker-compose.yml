@@ -1,7 +1,7 @@
 services:
   certgen:
     build: .
-    image: certgen
+    image: karharry/certgen:latest
     container_name: certgen
     # run as your host user so files in ./data are yours (find yours with `id -u` / `id -g`)
     user: "${PUID:-1000}:${PGID:-1000}"

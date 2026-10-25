@@ -2,5 +2,14 @@
 config/
 data/
 .env
+# build output and local state
+dist/
+build/
+*.spec
+build.log
+.venv/
+certgen-config/
+release/
 __pycache__/
 *.pyc
+.DS_Store
