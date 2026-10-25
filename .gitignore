@@ -1,0 +1,6 @@
+# runtime state: database, private keys, generated certificates
+config/
+data/
+.env
+__pycache__/
+*.pyc

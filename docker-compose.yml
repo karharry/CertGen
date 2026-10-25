@@ -1,0 +1,13 @@
+services:
+  certgen:
+    build: .
+    image: certgen
+    container_name: certgen
+    # run as your host user so files in ./data are yours (find yours with `id -u` / `id -g`)
+    user: "${PUID:-1000}:${PGID:-1000}"
+    ports:
+      - "6479:8080"          # host:container, bridge network, no host networking
+    volumes:
+      - ./config:/config     # database, log, session secret, private keys kept for renewal
+      - ./data:/data         # certificate files are saved here
+    restart: unless-stopped
