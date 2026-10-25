@@ -110,3 +110,7 @@ sha256sum /data/certs/homelab.crt
 
 Host-side Docker helpers: `docker compose logs -f` (live log), `docker compose exec certgen bash` (shell in the container),
 `docker compose stop` / `docker compose down` (stop it; `./config` and `./data` stay), `docker compose up -d --build` (rebuild after changes).
+
+## License
+
+MIT, see [LICENSE](LICENSE).
